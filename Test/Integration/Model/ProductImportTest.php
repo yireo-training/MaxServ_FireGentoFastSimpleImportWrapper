@@ -19,7 +19,7 @@ class ProductImportTest extends TestCase
      * @throws LocalizedException
      * @magentoAppArea adminhtml
      */
-    public function testProcessCsvWithNothing()
+    public function testProcessCsvWithBasicProduct()
     {
         $productsArray = [
             [

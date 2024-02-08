@@ -12,5 +12,13 @@
     "require": {
         "league/csv": "^9.14",
         "firegento/fastsimpleimport": "^2.0"
+    },
+    "autoload": {
+        "files": [
+            "registration.php"
+        ],
+        "psr-4": {
+            "MaxServ\\FireGentoFastSimpleImportWrapper\\": ""
+        }
     }
 }
