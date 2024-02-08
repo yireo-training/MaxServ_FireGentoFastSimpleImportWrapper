@@ -1,0 +1,16 @@
+{
+    "name": "maxserv/magento2-fire-gento-fast-simple-import-wrapper",
+    "description": "Wrapper around FireGento FastSimpleImport for Magento 2",
+    "minimum-stability": "stable",
+    "license": "OSL-3.0",
+    "authors": [
+        {
+            "name": "Jisse Reitsma",
+            "email": "jisse@yireo.com"
+        }
+    ],
+    "require": {
+        "league/csv": "^9.14",
+        "firegento/fastsimpleimport": "^2.0"
+    }
+}

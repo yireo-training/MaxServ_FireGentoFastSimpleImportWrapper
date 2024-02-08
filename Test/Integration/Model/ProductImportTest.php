@@ -3,12 +3,14 @@
 namespace MaxServ\ProductImportQueueTest\Test\Integration\Model;
 
 use FireGento\FastSimpleImport\Model\Importer;
+use Iterator;
 use Magento\Catalog\Api\ProductRepositoryInterface;
 use Magento\Framework\App\ObjectManager;
 use Magento\Framework\Component\ComponentRegistrar;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Exception\NoSuchEntityException;
 use PHPUnit\Framework\TestCase;
+use League\Csv\Reader;
 
 class ProductImportTest extends TestCase
 {
@@ -50,42 +52,19 @@ class ProductImportTest extends TestCase
         );
         $csvFile = $moduleDir.'/files/original.csv';
         $this->assertTrue(is_file($csvFile));
-        $csvData = $this->getDataFromCsvFile($csvFile);
-        $this->getImporter()->processImport($csvData);
+        $records = $this->getDataFromCsvFile($csvFile);
+
+        foreach ($records as $record) {
+            $this->getImporter()->processImport([$record]);
+        }
     }
 
-    private function getDataFromCsvFile(string $csvFile): array
+    private function getDataFromCsvFile(string $csvFile): Iterator
     {
-        $products = [];
-        $heading = [];
-        $i = 0;
-        if (($handle = fopen($csvFile, "r")) === false) {
-            return [];
-        }
-
-        while (($row = fgetcsv($handle, 1000, ";")) !== false) {
-            if ($i === 0) {
-                $heading = $row;
-                $i++;
-                continue;
-            }
-
-            foreach ($heading as $rowName) {
-                $data[$rowName] = '';
-            }
-
-            foreach ($row as $index => $value) {
-                $rowName = $heading[$index];
-                $data[$rowName] = $value;
-            }
-
-            $products[] = $data;
-            $i++;
-        }
-
-        fclose($handle);
-
-        return $products;
+        $csv = Reader::createFromPath($csvFile, 'r');
+        $csv->setDelimiter(';');
+        $csv->setHeaderOffset(0);
+        return $csv->getRecords();
     }
 
     private function getImporter(): Importer
