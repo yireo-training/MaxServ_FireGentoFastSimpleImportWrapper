@@ -2,6 +2,7 @@
 
 namespace MaxServ\ProductImportQueueTest\Test\Integration\Model;
 
+use FireGento\FastSimpleImport\Exception\ValidationException;
 use FireGento\FastSimpleImport\Model\Importer;
 use Iterator;
 use Magento\Catalog\Api\ProductRepositoryInterface;
@@ -21,22 +22,105 @@ class ProductImportTest extends TestCase
      */
     public function testProcessCsvWithBasicProduct()
     {
-        $productsArray = [
-            [
-                'entity' => 'product',
-                'sku' => 'firegento-test',
-                'attribute_set_code' => 'Default',
-                'product_type' => 'simple',
-                'product_websites' => 'base',
-                'name' => 'FireGento Test Product',
-                'price' => '14.0000',
-            ],
-        ];
+        $productSku = 'test-product';
+        $this->getImporter()->processImport([$this->getBasicProductData($productSku)]);
+        $this->assertProductSkuExists($productSku);
+        $this->removeProductBySku($productSku);
+    }
 
-        $this->getImporter()->processImport($productsArray);
-        $this->assertProductSkuExists('firegento-test');
-        //print_r($productImport->getLogTrace());
-        //print_r($productImport->getErrorMessages());
+    /**
+     * @return void
+     * @throws LocalizedException
+     * @magentoAppArea adminhtml
+     */
+    public function testProcessCsvWithBasicProductWithATitleTooLong()
+    {
+        $productSku = 'test-product';
+        $productArray = $this->getBasicProductData($productSku);
+        $productArray['name'] = str_repeat(chr(rand(1, 128)), 258);
+        $this->expectExceptionMessage('Attribute name exceeded max length in rows: 1');
+        $this->expectException(ValidationException::class);
+        $this->getImporter()->processImport([$productArray]);
+        $this->removeProductBySku($productSku);
+    }
+
+    /**
+     * @return void
+     * @throws LocalizedException
+     * @magentoAppArea adminhtml
+     */
+    public function testProcessCsvWithBasicProductWithASkuTooLong()
+    {
+        $productSku = 'test-'.str_repeat(chr(rand(1, 128)), 60); // @todo: Make sure SKU never contains whitespaces
+        $productArray = $this->getBasicProductData($productSku);
+        $this->expectExceptionMessage('Attribute sku exceeded max length in rows: 1');
+        $this->expectException(ValidationException::class);
+        $this->getImporter()->processImport([$productArray]);
+        $this->removeProductBySku($productSku);
+    }
+
+    /**
+     * @return void
+     * @throws LocalizedException
+     * @magentoAppArea adminhtml
+     */
+    public function testProcessCsvWithBasicProductWithValidColor()
+    {
+        $productSku = 'test-color-product';
+        $productArray = $this->getBasicProductData($productSku);
+        $productArray['color'] = 'Blue';
+        $productArray['attribute_set_code'] = 'Bag';
+        $this->getImporter()->processImport([$productArray]);
+        $this->assertProductAttributeHasValue($productSku, 'color', 56);
+        $this->removeProductBySku($productSku);
+    }
+
+    /**
+     * @return void
+     * @throws LocalizedException
+     * @magentoAppArea adminhtml
+     */
+    public function testProcessCsvWithBasicProductWithInvalidColor()
+    {
+        $productSku = 'test-product';
+        $productArray = $this->getBasicProductData($productSku);
+        $productArray['color'] = 'foobar';
+        $this->expectExceptionMessage('Value for \'color\' attribute contains incorrect value, see acceptable values on settings specified for Admin in rows: 1');
+        $this->expectException(ValidationException::class);
+        $this->getImporter()->processImport([$productArray]);
+        $this->removeProductBySku($productSku);
+    }
+
+    /**
+     * @return void
+     * @throws LocalizedException
+     * @magentoAppArea adminhtml
+     */
+    public function testProcessCsvWithBasicProductWithFoobarValidation()
+    {
+        $productSku = 'test-product';
+        $productArray = $this->getBasicProductData($productSku);
+        $productArray['name'] = 'Foobar 42';
+        $this->expectExceptionMessage('Foobar is 42');
+        $this->expectException(ValidationException::class);
+        $this->getImporter()->processImport([$productArray]);
+        $this->removeProductBySku($productSku);
+    }
+
+    /**
+     * @return void
+     * @throws LocalizedException
+     * @magentoAppArea adminhtml
+     */
+    public function testProcessCsvWithBasicProductWithIncorrectUrlKey()
+    {
+        // @todo: Create custom URL Rewrite rule with URL `test-product.html`
+        $productSku = 'test-product';
+        $productArray = $this->getBasicProductData();
+        $productArray['url_key'] = 'test-product';
+        $this->expectException(ValidationException::class);
+        $this->getImporter()->processImport([$productArray]);
+        $this->removeProductBySku($productSku);
     }
 
     /**
@@ -50,10 +134,11 @@ class ProductImportTest extends TestCase
             'module',
             'MaxServ_FireGentoFastSimpleImportWrapper'
         );
-        $csvFile = $moduleDir.'/files/original.csv';
+        $csvFile = $moduleDir . '/files/original.csv';
         $this->assertTrue(is_file($csvFile));
         $records = $this->getDataFromCsvFile($csvFile);
 
+        //$this->expectException(ValidationException::class);
         foreach ($records as $record) {
             $this->getImporter()->processImport([$record]);
         }
@@ -74,6 +159,11 @@ class ProductImportTest extends TestCase
 
     private function assertProductSkuExists(string $productSku)
     {
+        $this->assertProductAttributeHasValue($productSku, 'sku', $productSku);
+    }
+
+    private function assertProductAttributeHasValue(string $productSku, string $attributeCode, mixed $value)
+    {
         $productRepository = ObjectManager::getInstance()->get(ProductRepositoryInterface::class);
         try {
             $product = $productRepository->get($productSku);
@@ -81,6 +171,31 @@ class ProductImportTest extends TestCase
             $this->assertEquals($productSku, null, 'Product does not exist');
         }
 
-        $this->assertEquals($productSku, $product->getSku());
+        $this->assertEquals($value, $product->getData($attributeCode));
+    }
+    
+    private function removeProductBySku(string $productSku)
+    {
+        $productRepository = ObjectManager::getInstance()->get(ProductRepositoryInterface::class);
+        try {
+            $product = $productRepository->get($productSku);
+        } catch (NoSuchEntityException $e) {
+            return;
+        }
+        $productRepository->get($productSku);
+    }
+
+    private function getBasicProductData(string $productSku = 'test-product'): array
+    {
+        return
+            [
+                'entity' => 'product',
+                'sku' => $productSku,
+                'attribute_set_code' => 'Default',
+                'product_type' => 'simple',
+                'product_websites' => 'base',
+                'name' => $productSku,
+                'price' => '14.0000',
+            ];
     }
 }
